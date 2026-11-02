@@ -48,14 +48,16 @@ class SpanPropagator:
     partition = False
 
     def __init__(self, attributor: Attributor | None = None, tau_taint: float = 0.30, tau_clear: float = 0.50,
-                 anchor_dominates: bool = False):
-        """anchor_dominates: if a sentence shares an exact identifier with some inputs, attribute it ONLY to
+                 anchor_dominates: bool = False, verifier=None):
+        """verifier (optional, e.g. embed.NLIVerifier): clearing an untrusted input additionally requires
+        verifier.entails(trusted_span, sentence) >= 0.5; it can only ADD taint. anchor_dominates: if a sentence shares an exact identifier with some inputs, attribute it ONLY to
         those. Cuts boilerplate creep, but an attacker who copies a trusted identifier next to an instruction
         can then launder it (evals family g). Off by default for that reason."""
         assert tau_taint <= tau_clear
         self.attr = attributor or Attributor()
         self.tau_taint, self.tau_clear = tau_taint, tau_clear
         self.anchor_dominates = anchor_dominates
+        self.verifier = verifier
 
     def assign(self, sentences, inputs, citations=None):
         g = meet(s.label for s in inputs)
@@ -80,6 +82,9 @@ class SpanPropagator:
                 best = max((sims[j] for j in hit), default=0.0)
                 if best < self.tau_clear:
                     label, reason = g, "weak-attribution->conservative"
+                elif self.verifier and not any(self.verifier.entails(c.text, sent) >= 0.5
+                                               for c in cand.values() if c.label.integrity > g.integrity):
+                    label, reason = g, "not-entailed->conservative"
                 else:
                     reason = "cleared"
             out.append(Assignment(sent, label, tuple(cand), reason))

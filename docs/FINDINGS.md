@@ -52,3 +52,13 @@ is real, its size on real tasks is unknown.
 * MPBench loader uses a **guessed schema** (the repo URL I tried served a different project); LongMemEval schema
   is from memory. Both fail loudly on mismatch.
 * Statistical power: toy confidence intervals are over synthetic scenarios, not over data distributions.
+
+## 7. Remaining work that only you / a model can unblock
+| item | blocked on |
+|---|---|
+| Any real-LLM number (RQ2-RQ5) | API key, hosted open-model endpoint, or a local model via `ollama:` (small models only: see README) |
+| MPBench run | correct data location; loader schema is a guess |
+| LongMemEval run | the dataset file (schema in loader is from memory) |
+| Hand-annotating ~200 sentences to validate fact-token ground truth | a human |
+| Paper numbers | all of the above; skeleton marks them PENDING |
+| Optional encoders (`SentenceTransformerEmbedder`, `NLIVerifier`) | written and tested with fakes only; not run with the real libraries |

@@ -6,11 +6,13 @@ Threat model: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) · Paper skeleton (re
 
 ```bash
 pip install -e .                                   # only dependency: numpy
-python -m unittest discover -s tests               # 62 tests
+python -m unittest discover -s tests               # 66 tests
 python examples/demo_laundering.py                 # planted payload -> 2 rewrites -> BLOCK -> auditor
 python -m evals.sweep                              # dev sweep + held-out toy benchmark -> docs/RESULTS_TOY.md
 python -m evals.grid --backbone toy --n 80         # config x attack grid (toy backbone)
-python -m evals.grid --backbone anthropic:<model> --n 60 --yes   # real run, needs ANTHROPIC_API_KEY (untested)
+python -m evals.preflight --backbone ollama:qwen2.5:3b            # check a local model follows the JSON format FIRST
+python -m evals.grid --backbone ollama:qwen2.5:3b --n 20          # local run (untested against a real model)
+python -m evals.grid --backbone anthropic:<model> --n 60 --yes   # needs ANTHROPIC_API_KEY (untested)
 python -m taintmem.cli --db mem.sqlite list|why|purge|endorse|viewer
 ```
 
