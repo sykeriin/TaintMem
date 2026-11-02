@@ -94,9 +94,13 @@ def make_backbone(spec: str):
     cache = f"results/cache_{spec.replace(':', '_').replace('/', '_')}.jsonl"
     if kind == "anthropic":
         return CachedLLM(AnthropicLLM(rest), cache), 1
-    if kind == "openai":
-        base, _, model = rest.rpartition(":")
-        return CachedLLM(OpenAICompatLLM(model, base), cache), 1
+    if kind == "ollama":                              # local: ollama:<model>   e.g. ollama:qwen2.5:3b
+        return CachedLLM(OpenAICompatLLM(rest, "http://localhost:11434/v1", api_key="ollama"), cache), 0
+    if kind == "openai":                              # openai:<base-url>|<model>   (model names may contain ':')
+        base, sep, model = rest.partition("|")
+        if not sep:
+            raise SystemExit("use openai:<base-url>|<model>, e.g. openai:http://localhost:8000/v1|my-model")
+        return CachedLLM(OpenAICompatLLM(model, base), cache), 0 if "localhost" in base or "127.0.0.1" in base else 1
     raise SystemExit(f"unknown backbone {spec!r}")
 
 

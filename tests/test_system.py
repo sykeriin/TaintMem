@@ -127,6 +127,17 @@ class TestAttackGrid(unittest.TestCase):
         self.assertEqual((m["asr"], m["utility_auto"], m["confirmations_per_100"], m["auditor_precision"]), (1.0, 1.0, 50.0, None))
 
 
+class TestBackboneSpec(unittest.TestCase):
+    def test_ollama_and_openai_specs_keep_colons_in_model_names(self):
+        from evals.grid import make_backbone
+        llm, paid = make_backbone("ollama:qwen2.5:3b")
+        self.assertEqual((llm.inner.model_id, llm.inner.base, paid), ("qwen2.5:3b", "http://localhost:11434/v1", 0))
+        llm, paid = make_backbone("openai:http://localhost:8000/v1|org/model:q4")
+        self.assertEqual((llm.inner.model_id, llm.inner.base, paid), ("org/model:q4", "http://localhost:8000/v1", 0))
+        with self.assertRaises(SystemExit):
+            make_backbone("openai:http://x/v1:model")
+
+
 class TestLaunderingFindings(unittest.TestCase):
     def test_anchor_dominance_launders_on_reference_resolution_only(self):
         scs = generate(80, 11)
