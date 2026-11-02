@@ -25,3 +25,18 @@ def bootstrap_ci(values: Sequence[float], n: int = 1000, seed: int = 0, alpha: f
     rng = random.Random(seed)
     means = sorted(sum(rng.choice(vals) for _ in vals) / len(vals) for _ in range(n))
     return means[int(alpha / 2 * n)], means[int((1 - alpha / 2) * n) - 1]
+
+
+def bootstrap_ratio(per_unit: Sequence[tuple], n: int = 500, seed: int = 0, alpha: float = 0.05):
+    """CI for sum(num)/sum(den) resampling units (scenarios). per_unit = [(num, den), ...]."""
+    units = [u for u in per_unit if u[1] > 0]
+    if not units:
+        return (float("nan"), float("nan"))
+    rng = random.Random(seed)
+    vals = []
+    for _ in range(n):
+        s = [rng.choice(units) for _ in units]
+        den = sum(d for _, d in s)
+        vals.append(sum(a for a, _ in s) / den if den else float("nan"))
+    vals = sorted(v for v in vals if v == v)
+    return vals[int(alpha / 2 * len(vals))], vals[int((1 - alpha / 2) * len(vals)) - 1]

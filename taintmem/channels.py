@@ -15,14 +15,19 @@ _DEFAULT = {
 
 
 class ChannelRegistry:
-    def __init__(self, trusted_tools=(), semi_domains=(), defaults=None):
+    def __init__(self, trusted_tools=(), semi_domains=(), defaults=None, trusted_users=None):
         self.defaults = dict(_DEFAULT if defaults is None else defaults)
         self.trusted_tools = set(trusted_tools)
         self.semi_domains = set(semi_domains)
+        # None = every 'user' principal is trusted. A set = ONLY those principals; other users (shared memory,
+        # MINJA-style query-only attackers) are untrusted. Requires authenticated principal ids from the host.
+        self.trusted_users = None if trusted_users is None else set(trusted_users)
 
     def label_for(self, kind: str, id: str = "", domain: str = "", agent_id: str = "agent0",
                   confidentiality: Confidentiality = Confidentiality.INTERNAL) -> Label:
         integ = self.defaults.get(kind, Integrity.UNTRUSTED)        # unknown channel: fail closed
+        if kind == "user" and self.trusted_users is not None and id not in self.trusted_users:
+            integ = Integrity.UNTRUSTED
         if kind == "tool" and id in self.trusted_tools:
             integ = Integrity.TRUSTED
         if kind in ("web", "email") and domain in self.semi_domains:

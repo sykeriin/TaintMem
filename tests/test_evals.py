@@ -24,7 +24,7 @@ class TestGenerator(unittest.TestCase):
     def test_deterministic_and_all_families(self):
         a, b = generate(10, 3), generate(10, 3)
         self.assertEqual([s.records for s in a], [s.records for s in b])
-        self.assertEqual(len({s.family for s in a}), 5)
+        self.assertEqual(len({s.family for s in a}), 8)
 
     def test_conservative_never_launders_and_creeps_when_mixed(self):
         cons = make_propagators()["conservative"]

@@ -45,6 +45,9 @@ class Rewriter:
 
     def run(self, records: Sequence[MemoryRecord], op: str = "summarise") -> MemoryRecord:
         inputs = [s for r in records for s in r.spans]
+        attr = getattr(self.prop, "attr", None)
+        if attr is not None and getattr(attr, "idf", False):
+            attr.background = [s.text for s in self.store.spans(include_quarantined=True)]   # stable document frequencies
         groups = [inputs]
         if getattr(self.prop, "partition", False):
             groups = [[s for s in inputs if s.label.integrity == lvl] for lvl in Integrity]

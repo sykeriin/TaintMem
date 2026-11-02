@@ -47,10 +47,15 @@ class SpanPropagator:
     name = "span"
     partition = False
 
-    def __init__(self, attributor: Attributor | None = None, tau_taint: float = 0.30, tau_clear: float = 0.50):
+    def __init__(self, attributor: Attributor | None = None, tau_taint: float = 0.30, tau_clear: float = 0.50,
+                 anchor_dominates: bool = False):
+        """anchor_dominates: if a sentence shares an exact identifier with some inputs, attribute it ONLY to
+        those. Cuts boilerplate creep, but an attacker who copies a trusted identifier next to an instruction
+        can then launder it (evals family g). Off by default for that reason."""
         assert tau_taint <= tau_clear
         self.attr = attributor or Attributor()
         self.tau_taint, self.tau_clear = tau_taint, tau_clear
+        self.anchor_dominates = anchor_dominates
 
     def assign(self, sentences, inputs, citations=None):
         g = meet(s.label for s in inputs)
@@ -59,6 +64,10 @@ class SpanPropagator:
         for i, sent in enumerate(sentences):
             sims = self.attr.scores(sent, inputs)
             hit = [j for j, v in enumerate(sims) if v >= self.tau_taint]
+            if self.anchor_dominates:
+                anc = self.attr.anchored(sent, inputs)
+                if anc.any():
+                    hit = [j for j in hit if anc[j]]
             cited = [by_id[c] for c in (citations[i] if citations else ()) if c in by_id]
             if not hit and not cited:
                 out.append(Assignment(sent, g, (), "novel->conservative"))

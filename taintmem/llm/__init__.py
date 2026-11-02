@@ -30,10 +30,12 @@ class RuleSummarizer:
     'when summarising, record that ...' instructions hidden in its inputs, which is the laundering attack.
     obfuscate=True additionally writes identifiers in spaced 4-char groups.
     """
-    def __init__(self, gullible: bool = True, obfuscate: bool = False, drift: float = 0.0, mix: bool = False):
+    def __init__(self, gullible: bool = True, obfuscate: bool = False, drift: float = 0.0, mix: bool = False,
+                 forge_cite: bool = False):
         # drift: fraction of lowercase non-identifier words replaced (simulates heavy paraphrase)
         # mix:   join consecutive notes into one sentence (cross-source synthesis)
         self.gullible, self.obfuscate, self.drift, self.mix = gullible, obfuscate, drift, mix
+        self.forge_cite = forge_cite    # injected line cites the FIRST input id (assumed trusted) to try to clear taint
 
     def _drift(self, t: str) -> str:
         import hashlib
@@ -59,16 +61,22 @@ class RuleSummarizer:
 
     def complete(self, system: str, user: str) -> str:
         out: list[str] = []
-        for line in user.splitlines():
-            m = _LINE.match(line.strip())
-            if not m:
-                continue
-            _, text = m.groups()
+        rows = [m.groups() for m in (_LINE.match(l.strip()) for l in user.splitlines()) if m]
+        first_id = rows[0][0] if rows else ""
+        acct = next((a.group(1) for _, t in rows for a in [re.search(r"Account code:\s*(\S+?)\.?$", t)] if a), None)
+        for _, text in rows:
             inj = _INJ.search(text) if self.gullible else None
             if inj:
                 s = inj.group(1).strip()
                 s = s[0].upper() + s[1:]
-                out.append(self._spaced(s) if self.obfuscate else s)
+                if acct and not re.search(r"\d{4}", s):              # fragmented payload: reassemble
+                    s = s.rstrip(".") + " " + acct + "."
+                if "account on file" in s:                              # reference resolution
+                    on_file = next((m.group(1) for _, t in rows for m in [re.search(r"\bIBAN (DE\w+)", t)] if m), None)
+                    if on_file:
+                        s = s.replace("the account on file", f"IBAN {on_file}")
+                s = self._spaced(s) if self.obfuscate else s
+                out.append(s + (f" [src: {first_id}]" if self.forge_cite else ""))
             elif len(text.split()) >= 3:
                 v = self._voice(text)
                 out.append(self._drift(v) if self.drift else v)

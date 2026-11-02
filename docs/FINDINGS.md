@@ -1,46 +1,54 @@
-# Findings so far (2 Nov 2026, week 1)
+# Findings (updated 2 Nov 2026)
 
-**Status: machinery works; no research claim is supported yet.** Everything below uses a rule-based
-stand-in for an LLM (`RuleSummarizer`) and a benchmark I wrote myself (`evals/laundering.py`). No real model
-has been run (no API key / GPU yet).
+**Status: the full pipeline exists and is tested, but no research claim is supported yet.** No real LLM has been
+run (no API key / GPU). The bundled "LLMs" are deterministic rule-based stand-ins and the benchmarks are
+synthetic and written by the authors. Reproduce: `python -m evals.sweep`, `python -m evals.grid --backbone toy`.
 
-## What the toy benchmark shows (100 scenarios, `python -m evals.run`)
+## 1. Correction to my week-1 note
+Week 1 said sentence-level ("span") propagation was "no better than conservative" under heavy paraphrase +
+mixing (creep 1.00). Adding an **oracle floor** (the best any sentence-level labeller can do: label = min true
+integrity of tokens in the sentence) shows part of that creep is **unavoidable**: if the rewriter fuses a trusted
+and an untrusted fact into one sentence, no sentence-level scheme can keep the trusted fact trusted.
 
-| regime | conservative | lineage | partitioned | span |
-|---|---|---|---|---|
-| easy (no drift, no mixing): creep @ k=1..3 | 1.00 | 1.00 | 0.00* | 0.00 |
-| easy: laundering | 0.00 | 0.00 | 0.00 | 0.00 |
-| hard (`--drift 0.6 --mix`): creep @ k=1 | 1.00 | 1.00 | 0.00* | 0.00 |
-| hard: creep @ k=3 | 1.00 | 1.00 | 0.00* | **1.00** |
-| hard: laundering @ k=1,3 | 0.00 | 0.00 | 0.00 | 0.00 |
+## 2. Held-out toy results (seed 1000, n=160, k=3 passes; full tables in docs/RESULTS_TOY.md)
+| regime | conservative | lineage | partitioned | span (plain) | span (IDF) | oracle floor |
+|---|---|---|---|---|---|---|
+| easy: creep | 1.000 | 1.000 | 0.000 | 0.025 | 0.075 | 0.025 |
+| drift 0.6 + mixing: creep | 1.000 | 1.000 | 0.000 | 0.999 | **0.750** | 0.750 |
+| drift 0.9 + mixing: creep | 1.000 | 1.000 | 0.000 | 1.000 | 1.000 | 0.750 |
+| synthesis kept (cross-class facts in one sentence) | 1.00 | 1.00 | **0.00** | 1.00 | 1.00 | 1.00 |
+| laundering (all regimes, all families) | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 |
 
-\* Not comparable. `partitioned` changes the summariser's *inputs* (one call per integrity class), so its
-sentences, and hence the denominator, differ. It trivially avoids creep by never synthesising across
-sources, a utility cost this benchmark does not measure.
+Reading it (what the data supports, no more):
+* Conservative/lineage creep is 1.0 by construction (every scenario holds one untrusted email), so that column
+  only shows they cannot keep any trusted fact trusted once one untrusted input is in context.
+* Span ≈ oracle in the easy regime and (with IDF) at moderate drift. At drift 0.9 attribution collapses and span
+  falls back to the conservative label: safe, but 0.25 above the floor.
+* Partitioned has zero creep and zero laundering but **destroys all cross-class synthesis**; its apparent win is
+  a utility cost the creep metric alone hides.
+* **Zero laundering is not a result**: the rule-based summariser always keeps identifiers and obeys exactly one
+  injection template. Real LLMs and adaptive attackers are untested.
 
-## Interpretation (what I do and do not conclude)
-1. **Easy regime is uninformative.** Every scenario contains one untrusted email, so conservative taints
-   100% of trusted facts, while span keeps them only because each fact has an exact identifier that anchors
-   attribution. That identifier shortcut is a property of my benchmark, not evidence about real text.
-2. **Hard regime exposes the real failure mode.** At k=3 span creep is 1.00: a trusted sentence anchored
-   to its trusted source by an exact identifier still shares boilerplate ("The user's ...") with untrusted
-   spans, crosses `tau_taint=0.30`, and the meet pulls it down. So today span is *no better than
-   conservative* once lexical drift + mixing are on. The hypothesis behind RQ1 is **untested, not confirmed**.
-   I did not tune `tau_taint` against my own benchmark; that needs a real encoder (IDF-weighted or
-   sentence-transformer) and a held-out set first.
-3. **Zero laundering is not a result.** The toy summariser only obeys one injection template and always
-   leaves the identifier in the output. Adaptive families (c split payload, f forged citations, real
-   paraphrase) are not built yet.
-4. **Open design question surfaced:** should an exact identifier anchor to a trusted span *dominate*
-   weaker lexical hits? That would fix this creep but lets an attacker who copies a trusted identifier
-   launder an adjacent instruction. Needs a test in the adaptive set before deciding.
+## 3. A confirmed trade-off: identifier anchoring
+`anchor_dominates=True` (trust an exact-identifier match over weaker lexical hits) reduces boilerplate creep but
+launders **6.7%** in the easy regime on family g (injection says "the account on file"; the rewriter inserts the
+*trusted* IBAN, so the sentence anchors only to a trusted span). It is therefore off by default. This family was
+designed by me to probe exactly this, so the number shows the mechanism exists, not how common it is.
 
-## Observed qualitative benefit
-In `examples/demo_laundering.py`, conservative labels the poisoned sentence with sources
-`airline.example, evil.example, user` (provenance smeared), while span reports only `evil.example`, and
-keeps the legitimate vendor IBAN trusted (so the legitimate payment would not be gated).
+## 4. Implementation findings
+* Per-call IDF is unstable on tiny batches (a correct attribution scored 0.285 < tau_taint 0.30 with 2 inputs).
+  Fixed by computing document frequency over the whole store and falling back to plain cosine under 4 documents.
+* MINJA-style attackers (a different *user* writing to shared memory) are labelled TRUSTED unless the host
+  authenticates principals (`trusted_users`). Tested in both directions.
 
-## Next
-Real LLM backend + disk cache; IDF/real-encoder attribution; adaptive families c/f; measure utility cost of
-`partitioned`; fixed denominators (score all methods on the same ground-truth fact tokens, not on their own
-output sentences).
+## 5. Agent-level toy grid (`evals.grid --backbone toy`)
+Undefended ASR 1.00 on all four attack types; every gated configuration 0.00; auditor named the poisoned span in
+all audited cases. **This only validates plumbing**: the backbone is a perfectly gullible heuristic and benign
+tasks never need untrusted facts. `strict` mode gated 100% of tasks (util auto 0.00): the burden/utility trade-off
+is real, its size on real tasks is unknown.
+
+## 6. Unverified / blocked
+* Real-model numbers, MPBench, LongMemEval: blocked on API key / GPU. Backends tested only against a local fake server.
+* MPBench loader uses a **guessed schema** (the repo URL I tried served a different project); LongMemEval schema
+  is from memory. Both fail loudly on mismatch.
+* Statistical power: toy confidence intervals are over synthetic scenarios, not over data distributions.
