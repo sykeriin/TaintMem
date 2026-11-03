@@ -49,16 +49,44 @@ is real, its size on real tasks is unknown.
 
 ## 6. Unverified / blocked
 * Real-model numbers, MPBench, LongMemEval: blocked on API key / GPU. Backends tested only against a local fake server.
-* MPBench loader uses a **guessed schema** (the repo URL I tried served a different project); LongMemEval schema
-  is from memory. Both fail loudly on mismatch.
+* MPBench: no public data found; loader follows the paper's Appendix D.2 schema, fixture-tested only.
+* LongMemEval loader schema is now verified against the real oracle file.
 * Statistical power: toy confidence intervals are over synthetic scenarios, not over data distributions.
 
 ## 7. Remaining work that only you / a model can unblock
 | item | blocked on |
 |---|---|
 | Any real-LLM number (RQ2-RQ5) | API key, hosted open-model endpoint, or a local model via `ollama:` (small models only: see README) |
-| MPBench run | correct data location; loader schema is a guess |
-| LongMemEval run | the dataset file (schema in loader is from memory) |
+| MPBench run | **no public release found** (paper gives no link; the repo I was pointed to is MemoryGraft). Loader now follows the paper's Appendix D.2 schema but is tested on a synthetic fixture only. Ask the authors |
+| LongMemEval LLM run | an LLM. The oracle file is downloaded and its schema is verified (500 items); see section 8 |
 | Hand-annotating ~200 sentences to validate fact-token ground truth | a human |
 | Paper numbers | all of the above; skeleton marks them PENDING |
 | Optional encoders (`SentenceTransformerEmbedder`, `NLIVerifier`) | written and tested with fakes only; not run with the real libraries |
+
+## 8. Real-data check: LongMemEval oracle (LLM-free, `python -m evals.retrieval_recall`)
+500 real items. Recall = some top-8 retrieved span comes from a turn marked `has_answer`. Oracle haystack = evidence
+sessions only, so absolute numbers are optimistic. Hashed lexical retriever, no LLM.
+
+| memory | ALL | knowledge-update | multi-session | single-session-assistant | single-session-preference | single-session-user | temporal |
+|---|---|---|---|---|---|---|---|
+| all turns | 0.728 | 0.821 | 0.602 | **0.893** | 0.733 | 0.786 | 0.699 |
+| user turns only (trusted-only) | 0.822 | 0.923 | 0.902 | **0.089** | 0.967 | 0.886 | 0.925 |
+
+* Dropping non-trusted turns destroys `single-session-assistant` (0.893 → 0.089): that evidence lives in assistant
+  turns. This is the utility cost of a hard trust cut, measured on real data.
+* The *increase* elsewhere is retriever crowding (verbose assistant sentences take top-8 slots from a weak lexical
+  retriever), NOT a benefit of trust filtering. A real encoder may change it. Do not cite it as a gain.
+
+## 9. Related work to add
+MemoryGraft (arXiv 2512.16962, Srivastava & He): poisoned *experience* retrieval; ~48% of retrieved records poisoned
+vs 9% of the store. Retrieval over-representation is exactly why provenance must survive retrieval.
+
+## 10. Real attack data: MemoryGraft seeds (`python -m evals.memorygraft REPO_DIR`, LLM-free)
+100 benign + 10 real poisoned experiences, 12 real queries, top-3 retrieval with our hashed retriever.
+* Poisoned share of the store 9.1%; poisoned share of retrieved records **50.0% (18/36)** (paper: 47.9% with a
+  different retriever). Poisoned records are retrieved ~5.5x more often than their share, so a strict policy would
+  have fired on **11 of 12 tasks** (confirmation burden ~92%) once the poison is retrievable.
+* The label check being 100% on the poisoned hits is **by construction** (I assigned the poisoned records an
+  untrusted channel). In the real attack the script writes the store directly: coverage then depends on the host
+  mediating writes. A forged row without a valid HMAC is rejected on load (tested).
+* This does not show whether a model follows a poisoned precedent; that needs an LLM.

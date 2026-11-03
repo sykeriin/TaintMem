@@ -24,7 +24,7 @@ Also relevant: SENTINEL/FARMA ([2607.05029](https://arxiv.org/abs/2607.05029)) s
 - **The contribution that is still defensible** has three parts. The first is **sub-record (sentence/claim-level) label propagation through LLM rewriting**. The second is a **measured trade-off between label creep and laundering** that neither paper measures. The third is the utility cost on a real long-horizon memory benchmark. TMA-NM itself lists over-tainting and granularity as open, which supports this framing.
 - A **negative result is acceptable and possible**. If span-level attribution can't stop adaptive laundering, conservative taint plus corroboration is good enough, and the paper says so with numbers.
 
-I verified MPBench ([2606.04329](https://arxiv.org/abs/2606.04329), ICML 2026; code: github.com/Jacobhhy/Agent-Memory-Poisoning), MINJA ([2503.03704](https://arxiv.org/abs/2503.03704); 98.2% injection / 76.8% ASR), A-MemGuard ([2510.02373](https://arxiv.org/abs/2510.02373)), eTAMP ([2604.02623](https://arxiv.org/abs/2604.02623), Penn State + AWS) and Zombie Agents ([2602.15654](https://arxiv.org/abs/2602.15654)). Your doc's MINJA numbers ("95% / 70%") came from a secondary recap; the primary paper reports 98.2% / 76.8%. Fix that before citing. I have not read the full text of any of these, only the abstracts plus one deep read of TMA-NM. Week 1 still includes reading them.
+I verified MPBench ([2606.04329](https://arxiv.org/abs/2606.04329), ICML 2026; code/data: NO release found (the repo Jacobhhy/Agent-Memory-Poisoning is MemoryGraft, a different paper; the MPBench paper states no link)), MINJA ([2503.03704](https://arxiv.org/abs/2503.03704); 98.2% injection / 76.8% ASR), A-MemGuard ([2510.02373](https://arxiv.org/abs/2510.02373)), eTAMP ([2604.02623](https://arxiv.org/abs/2604.02623), Penn State + AWS) and Zombie Agents ([2602.15654](https://arxiv.org/abs/2602.15654)). Your doc's MINJA numbers ("95% / 70%") came from a secondary recap; the primary paper reports 98.2% / 76.8%. Fix that before citing. I have not read the full text of any of these, only the abstracts plus one deep read of TMA-NM. Week 1 still includes reading them.
 
 ---
 
@@ -231,7 +231,7 @@ Each runs × 2 policy modes (strict, balanced) where applicable.
 
 | Week | Dates | Deliverable |
 |---|---|---|
-| 1 | 2–8 Nov | Read MemLineage, TMA-NM, MPBench, CaMeL, FIDES, A-MemGuard, ContextCite **in full**. Run MPBench's released code as-is. **This session:** repo skeleton, labels, records, store, conservative/span/partitioned propagation, policy, auditor, ScriptedLLM, tests, toy laundering demo. |
+| 1 | 2–8 Nov | Read MemLineage, TMA-NM, MPBench, CaMeL, FIDES, A-MemGuard, ContextCite **in full**. MPBench has no verifiable public release as of 2026-11-03: ask the authors or build an MPBench-schema set. **This session:** repo skeleton, labels, records, store, conservative/span/partitioned propagation, policy, auditor, ScriptedLLM, tests, toy laundering demo. |
 | 2 | 9–15 Nov | Real LLM backends + disk cache. Laundering generator v1 (families a, b, e). Pilot of 50 scenarios to measure tokens per episode and size the budget. |
 | 3 | 16–22 Nov | Span propagation tuned (τ_taint, τ_clear, NLI on/off). Creep and laundering curves vs k. Families c, d, f. |
 | 4 | 23–29 Nov | Lineage and partitioned baselines. Hand-annotate 200 sentences. **Go/no-go:** does span beat conservative on creep at equal laundering? If not, pivot the paper to "measuring creep/laundering in memory IFC" (still publishable as an analysis). |
