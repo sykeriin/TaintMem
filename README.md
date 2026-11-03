@@ -1,6 +1,7 @@
 # TaintMem
 
 Provenance-tracked memory for AI agents (memory-poisoning defence). Research prototype.
+**Start here:** [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md) · local laptop run: [docs/LOCAL_RUN.md](docs/LOCAL_RUN.md)
 Plan: [docs/PLAN.md](docs/PLAN.md) · Findings and caveats: [docs/FINDINGS.md](docs/FINDINGS.md) ·
 Threat model: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) · Paper skeleton (results PENDING): [docs/paper/main.md](docs/paper/main.md)
 
