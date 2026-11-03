@@ -6,11 +6,12 @@ Threat model: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) · Paper skeleton (re
 
 ```bash
 pip install -e .                                   # only dependency: numpy
-python -m unittest discover -s tests               # 70 tests
+python -m unittest discover -s tests               # 73 tests
 python examples/demo_laundering.py                 # planted payload -> 2 rewrites -> BLOCK -> auditor
 python -m evals.sweep                              # dev sweep + held-out toy benchmark -> docs/RESULTS_TOY.md
 python -m evals.grid --backbone toy --n 80         # config x attack grid (toy backbone)
 python -m evals.retrieval_recall LME.json           # real LongMemEval oracle file, no LLM
+python -m evals.annotate make DIR / score DIR      # 200-sentence blind human check of the benchmark ground truth
 python -m evals.memorygraft REPO_DIR               # real MemoryGraft poisoned records, no LLM
 python -m evals.preflight --backbone ollama:qwen2.5:3b            # check a local model follows the JSON format FIRST
 python -m evals.grid --backbone ollama:qwen2.5:3b --n 20          # local run (untested against a real model)

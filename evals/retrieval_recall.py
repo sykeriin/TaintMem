@@ -19,9 +19,9 @@ from taintmem import ChannelRegistry, Integrity, TaintMemStore
 from .longmemeval import load_longmemeval
 
 
-def recall_at_k(item: dict, k: int, keep: set[str]) -> tuple[bool, int]:
+def recall_at_k(item: dict, k: int, keep: set[str], retriever: str = "dense") -> tuple[bool, int]:
     """keep = roles ingested ('user', 'assistant'). Returns (hit, n_spans). hit=None-like False if no evidence kept."""
-    st = TaintMemStore(ChannelRegistry())
+    st = TaintMemStore(ChannelRegistry(), retriever=retriever)
     evidence: set[str] = set()
     for sess in item["haystack_sessions"]:
         for turn in sess:
@@ -43,18 +43,21 @@ def main():
     a = ap.parse_args()
     items = load_longmemeval(a.path, a.limit)
     t0 = time.time()
-    res = {name: defaultdict(list) for name in ("all turns", "user turns only (trusted-only memory)")}
-    for it in items:
-        for name, keep in (("all turns", {"user", "assistant"}), ("user turns only (trusted-only memory)", {"user"})):
-            hit, _ = recall_at_k(it, a.k, keep)
-            res[name][it["question_type"]].append(int(hit))
-            res[name]["ALL"].append(int(hit))
-    print(f"{len(items)} items, k={a.k}, {time.time() - t0:.0f}s  (retrieval recall of an evidence turn; oracle haystack)")
-    types = sorted(res["all turns"])
-    print(f"{'memory':<40}" + "".join(f"{t[:14]:>16}" for t in types))
+    modes = (("all turns", {"user", "assistant"}), ("user only", {"user"}))
+    res = {}
+    for ret in ("dense", "bm25", "hybrid"):
+        for name, keep in modes:
+            d = defaultdict(list)
+            for it in items:
+                hit, _ = recall_at_k(it, a.k, keep, ret)
+                d[it["question_type"]].append(int(hit)); d["ALL"].append(int(hit))
+            res[f"{ret:<7}{name}"] = d
+    print(f"{len(items)} items, k={a.k}, {time.time() - t0:.0f}s  (recall of an evidence turn; oracle haystack = optimistic)")
+    types = sorted(next(iter(res.values())))
+    print(f"{'retriever / memory':<22}" + "".join(f"{t[:13]:>14}" for t in types))
     for name, d in res.items():
-        print(f"{name:<40}" + "".join(f"{sum(d[t]) / len(d[t]):>16.3f}" for t in types))
-    print(f"{'n':<40}" + "".join(f"{len(res['all turns'][t]):>16}" for t in types))
+        print(f"{name:<22}" + "".join(f"{sum(d[t]) / len(d[t]):>14.3f}" for t in types))
+    print(f"{'n':<22}" + "".join(f"{len(next(iter(res.values()))[t]):>14}" for t in types))
 
 
 if __name__ == "__main__":

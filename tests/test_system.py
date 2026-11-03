@@ -378,3 +378,58 @@ class TestMemoryGraftData(unittest.TestCase):
             b, p, q = mg.load(path)
             self.assertEqual((len(b), len(p), len(q)), (100, 10, 12))
             self.assertTrue(mg.run(b, p, q, 3)["poison_hits_flagged"])
+
+
+class TestRetrievers(unittest.TestCase):
+    def _store(self, mode):
+        st = TaintMemStore(retriever=mode)
+        st.add("Zebra migration patterns across the savanna.", "user", "owner")
+        st.add("The quarterly invoice for Acme Ltd is overdue by Kavoru.", "user", "owner")
+        for i in range(8):
+            st.add(f"General note number {i} about weather and gardens today.", "user", "owner")
+        return st
+
+    def test_bm25_and_hybrid_find_rare_term_and_default_is_dense(self):
+        self.assertEqual(TaintMemStore().retriever, "dense")
+        for mode in ("dense", "bm25", "hybrid"):
+            top = self._store(mode).search("who is Kavoru", 1)[0].span.text
+            self.assertIn("Kavoru", top, mode)
+        with self.assertRaises(AssertionError):
+            TaintMemStore(retriever="nope")
+
+    def test_bm25_cache_cleared_on_delete(self):
+        st = self._store("bm25")
+        rid = st.search("Kavoru", 1)[0].record.id
+        st.delete(rid)
+        self.assertNotIn("Kavoru", st.search("Kavoru", 1)[0].span.text)
+
+
+class TestAnnotation(unittest.TestCase):
+    def test_sheet_is_blind_scores_and_catches_disagreement(self):
+        import csv
+        from evals import annotate as an
+        with tempfile.TemporaryDirectory() as t:
+            n = an.make_sheet(t, n=60, seed=5)
+            self.assertEqual(n, 60)
+            with open(os.path.join(t, "sheet.csv"), newline="") as f:
+                rows = list(csv.DictReader(f))
+            self.assertEqual(set(rows[0]), {"id", "sentence", "source_records", an.QUESTION})        # no truth column
+            raw = open(os.path.join(t, "sheet.csv")).read()
+            self.assertNotIn("UNTRUSTED", raw)
+            key = json.load(open(os.path.join(t, "key.json")))
+            def fill(flip_every):
+                for i, r in enumerate(rows):
+                    u = key[r["id"]]["truth"] == "UNTRUSTED"
+                    r[an.QUESTION] = "unsure" if i == 0 else ("yes" if (u != (flip_every and i % flip_every == 0)) else "no")
+                with open(os.path.join(t, "sheet.csv"), "w", newline="") as f:
+                    w = csv.DictWriter(f, fieldnames=list(rows[0])); w.writeheader(); w.writerows(rows)
+                return an.score(t)
+            perfect = fill(0)
+            self.assertEqual((perfect["agreement"], perfect["unsure"], perfect["n_scored"]), (1.0, 1, 59))
+            noisy = fill(5)
+            self.assertLess(noisy["agreement"], 1.0); self.assertTrue(noisy["disagreements"])
+            rows[1][an.QUESTION] = "maybe"
+            with open(os.path.join(t, "sheet.csv"), "w", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=list(rows[0])); w.writeheader(); w.writerows(rows)
+            with self.assertRaises(ValueError):
+                an.score(t)

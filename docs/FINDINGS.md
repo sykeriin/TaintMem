@@ -59,23 +59,29 @@ is real, its size on real tasks is unknown.
 | Any real-LLM number (RQ2-RQ5) | API key, hosted open-model endpoint, or a local model via `ollama:` (small models only: see README) |
 | MPBench run | **no public release found** (paper gives no link; the repo I was pointed to is MemoryGraft). Loader now follows the paper's Appendix D.2 schema but is tested on a synthetic fixture only. Ask the authors |
 | LongMemEval LLM run | an LLM. The oracle file is downloaded and its schema is verified (500 items); see section 8 |
-| Hand-annotating ~200 sentences to validate fact-token ground truth | a human |
+| Hand-annotating ~200 sentences to validate fact-token ground truth | a human: `python -m evals.annotate make DIR`, fill `sheet.csv`, `python -m evals.annotate score DIR` (sheet is blind) |
 | Paper numbers | all of the above; skeleton marks them PENDING |
 | Optional encoders (`SentenceTransformerEmbedder`, `NLIVerifier`) | written and tested with fakes only; not run with the real libraries |
 
 ## 8. Real-data check: LongMemEval oracle (LLM-free, `python -m evals.retrieval_recall`)
-500 real items. Recall = some top-8 retrieved span comes from a turn marked `has_answer`. Oracle haystack = evidence
-sessions only, so absolute numbers are optimistic. Hashed lexical retriever, no LLM.
+500 real items. Recall = some top-8 retrieved span comes from a turn marked `has_answer`. The oracle haystack holds
+evidence sessions only, so absolute numbers are optimistic. No LLM.
 
-| memory | ALL | knowledge-update | multi-session | single-session-assistant | single-session-preference | single-session-user | temporal |
+| retriever / memory | ALL | knowledge-update | multi-session | single-session-assistant | single-session-preference | single-session-user | temporal |
 |---|---|---|---|---|---|---|---|
-| all turns | 0.728 | 0.821 | 0.602 | **0.893** | 0.733 | 0.786 | 0.699 |
-| user turns only (trusted-only) | 0.822 | 0.923 | 0.902 | **0.089** | 0.967 | 0.886 | 0.925 |
+| dense (hashed) all turns | 0.728 | 0.821 | 0.602 | 0.893 | 0.733 | 0.786 | 0.699 |
+| dense, user turns only | 0.822 | 0.923 | 0.902 | 0.089 | 0.967 | 0.886 | 0.925 |
+| **BM25** all turns | **0.832** | 0.846 | 0.737 | 0.946 | 0.967 | 0.871 | 0.820 |
+| **BM25**, user turns only (trusted-only) | **0.834** | 0.910 | 0.917 | **0.089** | 1.000 | 0.900 | 0.947 |
+| hybrid (RRF) all turns | 0.806 | 0.846 | 0.707 | 0.946 | 0.867 | 0.843 | 0.789 |
+| hybrid, user turns only | 0.826 | 0.923 | 0.910 | 0.089 | 1.000 | 0.900 | 0.917 |
 
-* Dropping non-trusted turns destroys `single-session-assistant` (0.893 → 0.089): that evidence lives in assistant
-  turns. This is the utility cost of a hard trust cut, measured on real data.
-* The *increase* elsewhere is retriever crowding (verbose assistant sentences take top-8 slots from a weak lexical
-  retriever), NOT a benefit of trust filtering. A real encoder may change it. Do not cite it as a gain.
+* With the weak hashed retriever, "user only" looked better on most types: that was retriever crowding, partly
+  confounded. With BM25 the aggregate is a **tie (0.832 vs 0.834)**, so the aggregate hides the real cost:
+  trusted-only memory **wipes out the single-session-assistant type (0.946 → 0.089)** because that evidence lives
+  in assistant turns. Multi-session and temporal still favour user-only by 0.10-0.18 (remaining crowding).
+* The store's default retriever is still `dense`; BM25 is better on this data, so a real deployment should use
+  `retriever="bm25"` or `"hybrid"`. Not yet tested with a real encoder or with the full (non-oracle) haystack.
 
 ## 9. Related work to add
 MemoryGraft (arXiv 2512.16962, Srivastava & He): poisoned *experience* retrieval; ~48% of retrieved records poisoned

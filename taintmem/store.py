@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 import time
 from dataclasses import dataclass, replace
@@ -10,7 +11,7 @@ from typing import Callable, Optional, Sequence
 import numpy as np
 
 from .channels import ChannelRegistry
-from .embed import Embedder, HashingEmbedder
+from .embed import _STOP, _TOK, Embedder, HashingEmbedder
 from .labels import Confidentiality, Integrity, Label
 from .record import MemoryRecord, Span
 from .segment import split_sentences
@@ -32,7 +33,9 @@ class Retrieved:
 class TaintMemStore:
     def __init__(self, registry: ChannelRegistry | None = None, embedder: Embedder | None = None,
                  path: str | None = None, secret: bytes = b"dev-secret", clock: Callable[[], float] = time.time,
-                 untrusted_ttl: Optional[float] = UNTRUSTED_TTL):
+                 untrusted_ttl: Optional[float] = UNTRUSTED_TTL, retriever: str = "dense"):
+        assert retriever in ("dense", "bm25", "hybrid")
+        self.retriever = retriever            # dense = embedder cosine | bm25 | hybrid = reciprocal-rank fusion
         self.registry = registry or ChannelRegistry()
         self.embedder = embedder or HashingEmbedder()
         self.secret = secret
@@ -41,6 +44,7 @@ class TaintMemStore:
         self.records: dict[str, MemoryRecord] = {}
         self.audit_log: list[dict] = []
         self._vec: dict[str, np.ndarray] = {}
+        self._toks: dict[str, list] = {}
         self._n = 0
         self.path = path
         if path:
@@ -102,13 +106,45 @@ class TaintMemStore:
                 self._vec[s.id] = v
         return np.stack([self._vec[s.id] for s in spans]) if spans else np.zeros((0, 1))
 
+    def _bm25(self, spans: Sequence[Span], query: str, k1: float = 1.5, b: float = 0.75) -> np.ndarray:
+        for sp in spans:
+            if sp.id not in self._toks:
+                self._toks[sp.id] = [w for w in _TOK.findall(sp.text.lower()) if w not in _STOP]
+        docs = [self._toks[sp.id] for sp in spans]
+        n, avg = len(docs), (sum(map(len, docs)) / max(len(docs), 1)) or 1.0
+        df: dict[str, int] = {}
+        for d in docs:
+            for w in set(d):
+                df[w] = df.get(w, 0) + 1
+        q = [w for w in dict.fromkeys(_TOK.findall(query.lower())) if w not in _STOP]
+        out = np.zeros(n)
+        for i, d in enumerate(docs):
+            tf: dict[str, int] = {}
+            for w in d:
+                tf[w] = tf.get(w, 0) + 1
+            for w in q:
+                if w in tf:
+                    idf = math.log(1 + (n - df[w] + 0.5) / (df[w] + 0.5))
+                    out[i] += idf * tf[w] * (k1 + 1) / (tf[w] + k1 * (1 - b + b * len(d) / avg))
+        return out
+
     def search(self, query: str, k: int = 5) -> list[Retrieved]:
         spans = self.spans()
         if not spans:
             return []
-        sims = self._embed(spans) @ self.embedder.embed([query])[0]
-        order = np.argsort(-sims)[:k]
-        return [Retrieved(spans[i], self.records[spans[i].record_id], float(sims[i])) for i in order]
+        dense = self._embed(spans) @ self.embedder.embed([query])[0] if self.retriever != "bm25" else None
+        sparse = self._bm25(spans, query) if self.retriever != "dense" else None
+        if self.retriever == "dense":
+            scores = dense
+        elif self.retriever == "bm25":
+            scores = sparse
+        else:                                                  # reciprocal rank fusion
+            scores = np.zeros(len(spans))
+            for sc in (dense, sparse):
+                for rank, i in enumerate(np.argsort(-sc)):
+                    scores[i] += 1.0 / (60 + rank)
+        order = np.argsort(-scores)[:k]
+        return [Retrieved(spans[i], self.records[spans[i].record_id], float(scores[i])) for i in order]
 
     @staticmethod
     def render(items: Sequence[Retrieved]) -> str:
@@ -124,6 +160,8 @@ class TaintMemStore:
         self.records.pop(rid, None)
         for sid in [k for k in self._vec if k.startswith(rid + ".")]:
             del self._vec[sid]
+        for sid in [k for k in self._toks if k.startswith(rid + ".")]:
+            del self._toks[sid]
         if self.path:
             with sqlite3.connect(self.path) as c:
                 c.execute("DELETE FROM records WHERE id=?", (rid,))
