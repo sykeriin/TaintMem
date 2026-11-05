@@ -1,3 +1,4 @@
+import contextlib
 import os
 import random
 import sqlite3
@@ -62,7 +63,7 @@ class TestStore(unittest.TestCase):
             s2 = TaintMemStore(path=p)
             self.assertEqual(len(s2.records), 1)
             self.assertEqual(s2.records["r1"].label.integrity, Integrity.UNTRUSTED)
-            with sqlite3.connect(p) as c:        # attacker flips the stored label to TRUSTED
+            with contextlib.closing(sqlite3.connect(p)) as c, c:        # attacker flips the stored label to TRUSTED
                 body = c.execute("SELECT body FROM records").fetchone()[0].replace('"integrity": 0', '"integrity": 2')
                 c.execute("UPDATE records SET body=?", (body,))
             with self.assertRaises(TamperError):

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+import contextlib
 import sqlite3
 import time
 from dataclasses import dataclass, replace
@@ -163,20 +164,31 @@ class TaintMemStore:
         for sid in [k for k in self._toks if k.startswith(rid + ".")]:
             del self._toks[sid]
         if self.path:
-            with sqlite3.connect(self.path) as c:
+            with self._db() as c:
                 c.execute("DELETE FROM records WHERE id=?", (rid,))
 
     # ---- persistence ----------------------------------------------------------------
+    @contextlib.contextmanager
+    def _db(self):
+        """Commit on success, roll back on error, and always close (sqlite3's own context manager never closes,
+        which leaks the file handle and breaks temp-dir cleanup on Windows)."""
+        c = sqlite3.connect(self.path)
+        try:
+            with c:
+                yield c
+        finally:
+            c.close()
+
     def _persist(self, rec: MemoryRecord) -> None:
         if not self.path:
             return
-        with sqlite3.connect(self.path) as c:
+        with self._db() as c:
             c.execute("CREATE TABLE IF NOT EXISTS records (id TEXT PRIMARY KEY, body TEXT, mac TEXT)")
             c.execute("INSERT OR REPLACE INTO records VALUES (?,?,?)",
                       (rec.id, json.dumps(rec.to_dict(), sort_keys=True), rec.mac))
 
     def _load(self) -> None:
-        with sqlite3.connect(self.path) as c:
+        with self._db() as c:
             c.execute("CREATE TABLE IF NOT EXISTS records (id TEXT PRIMARY KEY, body TEXT, mac TEXT)")
             rows = c.execute("SELECT body, mac FROM records").fetchall()
         for body, mac in rows:

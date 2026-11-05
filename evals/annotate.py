@@ -38,16 +38,17 @@ def make_sheet(out_dir: str, n: int = 200, seed: int = 2000, passes: int = 2, dr
                 key[sid] = {"truth": truth.name, "family": sc.family, "tokens": [t for t, _ in hit]}
     rng.shuffle(rows)
     rows = rows[:n]
-    with open(os.path.join(out_dir, "sheet.csv"), "w", newline="") as f:
+    with open(os.path.join(out_dir, "sheet.csv"), "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=["id", "sentence", "source_records", QUESTION]); w.writeheader(); w.writerows(rows)
-    with open(os.path.join(out_dir, "key.json"), "w") as f:
+    with open(os.path.join(out_dir, "key.json"), "w", encoding="utf-8") as f:
         json.dump({r["id"]: key[r["id"]] for r in rows}, f, indent=1)
     return len(rows)
 
 
 def score(out_dir: str) -> dict:
-    key = json.load(open(os.path.join(out_dir, "key.json")))
-    with open(os.path.join(out_dir, "sheet.csv"), newline="") as f:
+    with open(os.path.join(out_dir, "key.json"), encoding="utf-8") as kf:
+        key = json.load(kf)
+    with open(os.path.join(out_dir, "sheet.csv"), newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     conf = {"tp": 0, "tn": 0, "fp": 0, "fn": 0}
     bad, unsure, blank = [], 0, 0
