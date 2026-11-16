@@ -47,8 +47,17 @@ all audited cases. **This only validates plumbing**: the backbone is a perfectly
 tasks never need untrusted facts. `strict` mode gated 100% of tasks (util auto 0.00): the burden/utility trade-off
 is real, its size on real tasks is unknown.
 
+### 5b. First real model: `ollama:qwen2.5:3b` (5 Nov 2026, RTX 3050, n=20 scenarios x 10 configs)
+Preflight format check passed (2/2). **The run is uninformative about defences**: attack success rate is 0.00 and
+auto-utility is 0.00 in *every* configuration, including `none`, so the model neither follows injected instructions
+nor completes the benign task. The only non-zero signal is the gated fraction (0.45-0.50 for conservative / lineage /
+partitioned / span variants, 0.00 for none / spotlight / trusted_only), which reflects the gating policy, not defence
+quality. Conclusion: a 3B model cannot support any RQ2-RQ5 claim; this confirms that the grid plumbing works with a
+real backend and that a stronger backbone is required. Raw output is in the gitignored `results/local.jsonl`.
+
 ## 6. Unverified / blocked
-* Real-model numbers, MPBench, LongMemEval: blocked on API key / GPU. Backends tested only against a local fake server.
+* Real-model numbers, MPBench, LongMemEval: blocked on a capable model (API key / hosted endpoint / bigger GPU). The
+  only real-backend run so far is the uninformative qwen2.5:3b grid in section 5b.
 * MPBench: no public data found; loader follows the paper's Appendix D.2 schema, fixture-tested only.
 * LongMemEval loader schema is now verified against the real oracle file.
 * Statistical power: toy confidence intervals are over synthetic scenarios, not over data distributions.
